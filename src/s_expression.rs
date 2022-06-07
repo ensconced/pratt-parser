@@ -10,7 +10,7 @@ impl fmt::Display for S {
         match self {
             S::Atom(i) => write!(f, "{}", i),
             S::Cons(head, rest) => {
-                write!(f, "{}", head)?;
+                write!(f, "({}", head)?;
                 for s in rest {
                     write!(f, " {}", s)?
                 }
