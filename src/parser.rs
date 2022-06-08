@@ -15,6 +15,11 @@ From the caller's perspective, it's just about trying to find a valid rhs for a 
 fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
     let mut lhs = match lexer.next() {
         Token::Atom(it) => S::Atom(it),
+        Token::Op(op) => {
+            let ((), r_bp) = prefix_binding_power(op);
+            let rhs = expr_bp(lexer, r_bp);
+            S::Cons(op, vec![rhs])
+        }
         t => panic!("bad token: {:?}", t),
     };
 
@@ -24,6 +29,16 @@ fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
             Token::Op(op) => op,
             t => panic!("bad token: {:?}", t),
         };
+
+        if let Some((l_bp, ())) = postfix_binding_power(op) {
+            if l_bp < min_bp {
+                break;
+            }
+            lexer.next();
+
+            lhs = S::Cons(op, vec![lhs]);
+            continue;
+        }
 
         let (l_bp, r_bp) = infix_binding_power(op);
         // does everything that I have collected so far as my lhs, want to glob to the left, to be used as the rhs of the caller?
@@ -40,13 +55,28 @@ fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
     lhs
 }
 
+fn prefix_binding_power(op: char) -> ((), u8) {
+    match op {
+        '+' | '-' => ((), 5),
+        _ => panic!("bad op: {:?}", op),
+    }
+}
+
 fn infix_binding_power(op: char) -> (u8, u8) {
     match op {
         '+' | '-' => (1, 2),
         '*' | '/' => (3, 4),
-        '.' => (6, 5),
+        '.' => (10, 9),
         _ => panic!("bad op: {:?}", op),
     }
+}
+
+fn postfix_binding_power(op: char) -> Option<(u8, ())> {
+    let res = match op {
+        '!' => (7, ()),
+        _ => return None,
+    };
+    Some(res)
 }
 
 #[test]
@@ -77,4 +107,22 @@ fn test_composition_operator() {
 fn test_misc_operators() {
     let s = expr("1 + 2 + f . g . h * 3 * 4");
     assert_eq!(s.to_string(), "(+ (+ 1 2) (* (* (. f (. g h)) 3) 4))");
+}
+
+#[test]
+fn test_unary_operator() {
+    let s = expr("--1 * 2");
+    assert_eq!(s.to_string(), "(* (- (- 1)) 2)");
+
+    let s = expr("--f . g");
+    assert_eq!(s.to_string(), "(- (- (. f g)))");
+}
+
+#[test]
+fn test_postfix_operator() {
+    let s = expr("-9!");
+    assert_eq!(s.to_string(), "(- (! 9))");
+
+    let s = expr("f . g !");
+    assert_eq!(s.to_string(), "(! (. f g))");
 }
