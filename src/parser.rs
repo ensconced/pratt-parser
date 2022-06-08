@@ -6,6 +6,12 @@ fn expr(input: &str) -> S {
     expr_bp(&mut lexer, 0)
 }
 
+/*
+
+From the caller's perspective, it's just about trying to find a valid rhs for a given lhs...
+
+*/
+
 fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
     let mut lhs = match lexer.next() {
         Token::Atom(it) => S::Atom(it),
@@ -20,6 +26,7 @@ fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
         };
 
         let (l_bp, r_bp) = infix_binding_power(op);
+        // does everything that I have collected so far as my lhs, want to glob to the left, to be used as the rhs of the caller?
         if l_bp < min_bp {
             break;
         }
