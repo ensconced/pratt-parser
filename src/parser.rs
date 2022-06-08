@@ -15,6 +15,11 @@ From the caller's perspective, it's just about trying to find a valid rhs for a 
 fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
     let mut lhs = match lexer.next() {
         Token::Atom(it) => S::Atom(it),
+        Token::Op('(') => {
+            let lhs = expr_bp(lexer, 0);
+            assert_eq!(lexer.next(), Token::Op(')'));
+            lhs
+        }
         Token::Op(op) => {
             let ((), r_bp) = prefix_binding_power(op);
             let rhs = expr_bp(lexer, r_bp);
@@ -36,20 +41,31 @@ fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
             }
             lexer.next();
 
-            lhs = S::Cons(op, vec![lhs]);
+            lhs = if op == '[' {
+                let rhs = expr_bp(lexer, 0);
+                assert_eq!(lexer.next(), Token::Op(']'));
+                S::Cons(op, vec![lhs, rhs])
+            } else {
+                S::Cons(op, vec![lhs])
+            };
+
             continue;
         }
 
-        let (l_bp, r_bp) = infix_binding_power(op);
-        // does everything that I have collected so far as my lhs, want to glob to the left, to be used as the rhs of the caller?
-        if l_bp < min_bp {
-            break;
+        if let Some((l_bp, r_bp)) = infix_binding_power(op) {
+            // does everything that I have collected so far as my lhs, want to glob to the left, to be used as the rhs of the caller?
+            if l_bp < min_bp {
+                break;
+            }
+            lexer.next();
+
+            let rhs = expr_bp(lexer, r_bp);
+
+            lhs = S::Cons(op, vec![lhs, rhs]);
+            continue;
         }
-        lexer.next();
 
-        let rhs = expr_bp(lexer, r_bp);
-
-        lhs = S::Cons(op, vec![lhs, rhs]);
+        break;
     }
 
     lhs
@@ -62,18 +78,19 @@ fn prefix_binding_power(op: char) -> ((), u8) {
     }
 }
 
-fn infix_binding_power(op: char) -> (u8, u8) {
-    match op {
+fn infix_binding_power(op: char) -> Option<(u8, u8)> {
+    let res = match op {
         '+' | '-' => (1, 2),
         '*' | '/' => (3, 4),
         '.' => (10, 9),
-        _ => panic!("bad op: {:?}", op),
-    }
+        _ => return None,
+    };
+    Some(res)
 }
 
 fn postfix_binding_power(op: char) -> Option<(u8, ())> {
     let res = match op {
-        '!' => (7, ()),
+        '!' | '[' => (7, ()),
         _ => return None,
     };
     Some(res)
@@ -125,4 +142,19 @@ fn test_postfix_operator() {
 
     let s = expr("f . g !");
     assert_eq!(s.to_string(), "(! (. f g))");
+}
+
+#[test]
+fn test_parens() {
+    let s = expr("(((8)))");
+    assert_eq!(s.to_string(), "8");
+
+    let s = expr("(1 + 2) * 3");
+    assert_eq!(s.to_string(), "(* (+ 1 2) 3)");
+}
+
+#[test]
+fn test_array_access_operator() {
+    let s = expr("x[0][1]");
+    assert_eq!(s.to_string(), "([ ([ x 0) 1)");
 }
